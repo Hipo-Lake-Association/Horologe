@@ -28,43 +28,6 @@ options:
     # The variable in which to store tasks.
     task-storage: horologe::tasks
 
-# Registers a new task to the scheduler.
-# If a task with the same identifier and group already exists, it will not be overwritten.
-# If the completion date of the task is in the past, the task will not be registered.
-effect:
-    patterns:
-        (create|register|schedule) [a] [new] task [with id] %string% [in [task] group %-string%] for %date%
-        (create|register|schedule) [a] [new] [repeatable] task [with id] %string% [in [task] group %-string%] [for] every %timespan%
-    trigger:
-        set {_id} to expr-1
-        set {_group} to expr-2 ? {@default-task-group}
-        set {_period} to expr-3
-
-        # Do not overwrite task if it already exists.
-        stop if {{@task-storage}::%{_group}%::%{_id}%::*} exists
-
-        # Repeatable task
-        if {_period} is a timespan:
-            set {{@task-storage}::%{_group}%::%{_id}%::completion} to {_period} later
-            set {{@task-storage}::%{_group}%::%{_id}%::repeat} to {_period}
-
-        # Fixed date task
-        else if {_period} is a date:
-            stop if {_period} < now # Do not register tasks in the past.
-            set {{@task-storage}::%{_group}%::%{_id}%::completion} to {_period}
-
-        refresh task {_id} from group {_group} # Start waiting.
-
-# Removes a task from the scheduler.
-# Tasks that are removed before they are completed will not fire the completion event when
-# the completion date is reached.
-effect (cancel|stop|unregister|unschedule) task [with id] %string% [(from|in) [task] group %-string%]:
-    trigger:
-        set {_group} to expr-2 ? {@default-task-group}
-        loop exprs-1:
-            if {{@task-storage}::%{_group}%::%loop-value%::*} exists: # Limit variable change queue pollution.
-                delete {{@task-storage}::%{_group}%::%loop-value%::*}
-
 # Checks whether a task is registered.
 condition:
     patterns:
@@ -190,6 +153,43 @@ local effect refresh task[s] [with id[s]] %strings% [(from|in) [task] group %-st
         set {_group} to expr-2 ? {@default-task-group}
         loop exprs-1:
             run section {_timer} with loop-value, {_group}, {_timer}
+
+# Registers a new task to the scheduler.
+# If a task with the same identifier and group already exists, it will not be overwritten.
+# If the completion date of the task is in the past, the task will not be registered.
+effect:
+    patterns:
+        (create|register|schedule) [a] [new] task [with id] %string% [in [task] group %-string%] for %date%
+        (create|register|schedule) [a] [new] [repeatable] task [with id] %string% [in [task] group %-string%] [for] every %timespan%
+    trigger:
+        set {_id} to expr-1
+        set {_group} to expr-2 ? {@default-task-group}
+        set {_period} to expr-3
+
+        # Do not overwrite task if it already exists.
+        stop if {{@task-storage}::%{_group}%::%{_id}%::*} exists
+
+        # Repeatable task
+        if {_period} is a timespan:
+            set {{@task-storage}::%{_group}%::%{_id}%::completion} to {_period} later
+            set {{@task-storage}::%{_group}%::%{_id}%::repeat} to {_period}
+
+        # Fixed date task
+        else if {_period} is a date:
+            stop if {_period} < now # Do not register tasks in the past.
+            set {{@task-storage}::%{_group}%::%{_id}%::completion} to {_period}
+
+        refresh task {_id} from group {_group} # Start waiting.
+
+# Removes a task from the scheduler.
+# Tasks that are removed before they are completed will not fire the completion event when
+# the completion date is reached.
+effect (cancel|stop|unregister|unschedule) task [with id] %string% [(from|in) [task] group %-string%]:
+    trigger:
+        set {_group} to expr-2 ? {@default-task-group}
+        loop exprs-1:
+            if {{@task-storage}::%{_group}%::%loop-value%::*} exists: # Limit variable change queue pollution.
+                delete {{@task-storage}::%{_group}%::%loop-value%::*}
 
 # Starting the scheduler on startup.
 on skript load:
