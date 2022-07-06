@@ -122,17 +122,19 @@ expression [event-]task[[ ]group]:
 
 # Waits for a task to complete and then calls the completion event for the task.
 local effect refresh task[s] [with id[s]] %strings% [(from|in) [task] group %-string%]:
-    safe parse:
+    parse:
         # Self-calling section to skip waiting
-        create new section with {_id}, {_group}, {_section} stored in {_timer}:
+        create new section with {_id}, {_group}, {_completion}, {_section} stored in {_timer}:
             stop if {{@task-storage}::%{_group}%::%{_id}%::*} does not exist
 
             # If the completion date is in the past, the task is completed; do not wait.
-            if {{@task-storage}::%{_group}%::%{_id}%::completion} > now:
-                wait difference between {{@task-storage}::%{_group}%::%{_id}%::completion} and now
+            if {_completion} > now:
+                wait difference between {_completion} and now
 
-            # Again, in case the task was unregistered while waiting.
-            stop if {{@task-storage}::%{_group}%::%{_id}%::*} does not exist
+            # Ensure the task date is correct.
+            # This is necessary in case the task has been unregistered in the meantime
+            # or has been rescheduled with a later date.
+            stop if {_completion} is not {{@task-storage}::%{_group}%::%{_id}%::completion}
 
             # Construct and fire the event
             set {_data::id} to {_id}
@@ -143,7 +145,7 @@ local effect refresh task[s] [with id[s]] %strings% [(from|in) [task] group %-st
             if {{@task-storage}::%{_group}%::%{_id}%::repeat} is set:
                 set {_time} to {{@task-storage}::%{_group}%::%{_id}%::repeat}
                 set {{@task-storage}::%{_group}%::%{_id}%::completion} to {_time} from now
-                run section {_section} with {_id}, {_group}, {_section}
+                run section {_section} with {_id}, {_group}, {{@task-storage}::%{_group}%::%{_id}%::completion}, {_section}
 
             else:
                 delete {{@task-storage}::%{_group}%::%{_id}%::*}
@@ -152,7 +154,7 @@ local effect refresh task[s] [with id[s]] %strings% [(from|in) [task] group %-st
     trigger:
         set {_group} to expr-2 ? {@default-task-group}
         loop exprs-1:
-            run section {_timer} with loop-value, {_group}, {_timer}
+            run section {_timer} with loop-value, {_group}, {{@task-storage}::%{_group}%::%loop-value%::completion}, {_timer}
 
 # Registers a new task to the scheduler.
 # If a task with the same identifier and group already exists, it will not be overwritten.
